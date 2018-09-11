@@ -13,7 +13,7 @@ namespace ReeTwitch
     {
         readonly static string channelName = "channelnamehere"; // Twitch channel to join (All lower case)
         readonly static string botName = "botnamehere"; // Your bots twitch account name (All lower case)
-        readonly static string oauth = "oauth:yourkeyhere"; // Get the oauth key from https://twitchapps.com/tmi/ - Include the "oauth:" bit
+        readonly static string oauth = "oauth:oauthkeyhere"; // Get the oauth key from https://twitchapps.com/tmi/ - Include the "oauth:" bit
         static readonly ConsoleColor userColor = ConsoleColor.Yellow;
         static readonly ConsoleColor streamerColor = ConsoleColor.Red;
         static StreamReader theReader;
@@ -145,15 +145,15 @@ namespace ReeTwitch
                         if (receivedData == "JOIN #{channelName}")
                         {
                             Console.WriteLine("Yay!");
-                            
+
                         }
                         else
                         {
                             // User stuff
-                            string reqData = receivedData.Substring(0, receivedData.IndexOf(":"));
+                            string reqData = receivedData.Substring(0, receivedData.IndexOf(":")); // Partially breaks with proper emotes :<
                             TwitchUser theUser = new TwitchUser(reqData);
-                            string messageData = receivedData.Remove(0, receivedData.IndexOf(":") + 1);
-                            string userName = messageData.Substring(0, messageData.IndexOf("!"));
+                            string userName = receivedData.Remove(0, receivedData.IndexOf("!") + 1);
+                            userName = userName.Substring(0, userName.IndexOf("@"));
                             string command = receivedData.Remove(0, receivedData.IndexOf(".tmi.twitch.tv") + 15);
                             command = command.Substring(0, command.IndexOf(" "));
                             if (command == "JOIN")
@@ -173,7 +173,7 @@ namespace ReeTwitch
                                 string userText = receivedData.Remove(0, receivedData.IndexOf("#" + channelName) + channelName.Length + 3);
                                 DateTime theTime = DateTime.Now;
                                 Console.Write(theTime.ToString("[HH:mm:ss] "));
-                                if (userName == channelName)
+                                if (theUser.IsBroadcaster)
                                 {
                                     Console.ForegroundColor = streamerColor;
                                 }
@@ -189,7 +189,7 @@ namespace ReeTwitch
                                 {
                                     Console.Write("(S)");
                                 }
-                                Console.Write(theUser.DisplayName);
+                                Console.Write(theUser.DisplayName); // + "(" + userName + ")");
                                 Console.ForegroundColor = ConsoleColor.White;
                                 Console.WriteLine($": {userText}");
                             }
@@ -232,8 +232,10 @@ namespace ReeTwitch
     class TwitchUser
     {
         public bool BitsOwner = false;
+        public bool IsBroadcaster = false;
         public bool IsSubGifter = false;
         public bool IsModerator = false;
+        public bool IsPartner = false;
         public bool IsPremium = false;
         public bool IsSubscriber = false;
         public string DisplayName = "";
@@ -249,8 +251,13 @@ namespace ReeTwitch
             DisplayName = tagDataDictionary["display-name"].ToString();
             if (tagDataDictionary["@badges"] != "")
             {
+                // Console.WriteLine("Badges: " + tagDataDictionary["@badges"]);
                 foreach (string badge in tagDataDictionary["@badges"].Split(','))
                 {
+                    if (badge.Contains("broadcaster"))
+                    {
+                        IsBroadcaster = true;
+                    }
                     if (badge.Contains("bits"))
                     {
                         BitsOwner = true;
@@ -258,6 +265,10 @@ namespace ReeTwitch
                     else if (badge.Contains("moderator"))
                     {
                         IsModerator = true;
+                    }
+                    else if (badge.Contains("partner"))
+                    {
+                        IsPartner = true;
                     }
                     else if (badge.Contains("premium"))
                     {
@@ -281,7 +292,7 @@ namespace ReeTwitch
 
             if (tagDataDictionary["emotes"] != "")
             {
-                
+
             }
         }
     }
