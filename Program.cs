@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -9,9 +11,9 @@ namespace ReeTwitch
 {
     class Program
     {
-        readonly static string channelName = "ChannelNameHere"; // Twitch channel to join (All lower case)
-        readonly static string botName = "BotNameHere"; // Your bots twitch account name (All lower case)
-        readonly static string oauth = "oauth:PutYourKeyHere"; // Get the oauth key from https://twitchapps.com/tmi/ - Include the "oauth:" bit
+        readonly static string channelName = "channelnamehere"; // Twitch channel to join (All lower case)
+        readonly static string botName = "botnamehere"; // Your bots twitch account name (All lower case)
+        readonly static string oauth = "oauth:yourkeyhere"; // Get the oauth key from https://twitchapps.com/tmi/ - Include the "oauth:" bit
         static readonly ConsoleColor userColor = ConsoleColor.Yellow;
         static readonly ConsoleColor streamerColor = ConsoleColor.Red;
         static StreamReader theReader;
@@ -100,6 +102,8 @@ namespace ReeTwitch
                         else if (serverCommand == "376")
                         {
                             // All done connecting - Now joing the channel
+                            theWriter.WriteLine("CAP REQ :twitch.tv/tags"); // Oh god why did I start with this...
+                            theWriter.Flush();
                             string joinstring = "JOIN " + "#" + channelName + "\r\n";
                             theWriter.WriteLine(joinstring);
                             theWriter.Flush();
@@ -118,56 +122,81 @@ namespace ReeTwitch
                             Console.WriteLine($"Fatal Error on PING: {e.Message}");
                         }
                     }
-                    else
+                    else if (dataParts[0] == $"{botName}!{botName}@{botName}.tmi.twitch.tv")
                     {
-                        // User stuff
-                        string userName = dataParts[0].Split('!')[0];
-                        string command = dataParts[1];
-                        if (command == "353" || command == "366")
+                        if (dataParts[1] == "JOIN")
                         {
-                            // Names command stuff - Don't really care since it doesn't work in Twitch chat....
-                        }
-                        else if (command == "JOIN")
-                        {
-                            if (userName == botName)
-                            {
-                                Console.WriteLine($"Bot \"{botName}\" has joined the channel!");
-                                viewerCount = GetViewerCount();
-                                Console.WriteLine($"There are currently {viewerCount} users in the channel - Including yourself" + Environment.NewLine);
-                            }
-                            else
-                            {
-                                Console.WriteLine($"{userName} joined the channel");
-                            }
-                        }
-                        else if (command == "PRIVMSG")
-                        {
-                            DateTime theTime = DateTime.Now;
-                            Console.Write(theTime.ToString("[HH:mm:ss] "));
-                            if (userName == channelName)
-                            {
-                                Console.ForegroundColor = streamerColor;
-                            }
-                            else
-                            {
-                                Console.ForegroundColor = userColor;
-                            }
-                            Console.Write(userName);
-                            Console.ForegroundColor = ConsoleColor.White;
-                            // ACK - Must be some better way to do this... Better parsing?
-                            StringBuilder messageBuilder = new StringBuilder();
-                            for (int j = 0; j < dataParts.Length; j++)
-                            {
-                                if (j >= 3)
-                                {
-                                    messageBuilder.Append(dataParts[j] + " ");
-                                }
-                            }
-                            Console.WriteLine($": {messageBuilder.ToString().Remove(0, 1)}");
+                            Console.WriteLine($"Bot \"{botName}\" has joined the channel!");
+                            viewerCount = GetViewerCount();
+                            Console.WriteLine($"There are currently {viewerCount} users in the channel - Including yourself" + Environment.NewLine);
                         }
                         else
                         {
-                            Console.WriteLine($"Unknown command -->{dataParts[0]} ++ {dataParts[1]}<--- : {receivedData}");
+                            Console.WriteLine("No Clue: " + receivedData);
+                        }
+                    }
+                    else if (dataParts[1] == "353" || dataParts[1] == "366")
+                    {
+                        // Random join stuff we don't care about
+                    }
+                    else
+                    {
+                        // Initial join is just: reelix!reelix@reelix.tmi.twitch.tv JOIN #backyardistv
+                        if (receivedData == "JOIN #{channelName}")
+                        {
+                            Console.WriteLine("Yay!");
+                            
+                        }
+                        else
+                        {
+                            // User stuff
+                            string reqData = receivedData.Substring(0, receivedData.IndexOf(":"));
+                            TwitchUser theUser = new TwitchUser(reqData);
+                            string messageData = receivedData.Remove(0, receivedData.IndexOf(":") + 1);
+                            string userName = messageData.Substring(0, messageData.IndexOf("!"));
+                            string command = receivedData.Remove(0, receivedData.IndexOf(".tmi.twitch.tv") + 15);
+                            command = command.Substring(0, command.IndexOf(" "));
+                            if (command == "JOIN")
+                            {
+                                if (userName == botName)
+                                {
+                                    Console.WriteLine(receivedData);
+
+                                }
+                                else
+                                {
+                                    Console.WriteLine($"{userName} joined the channel");
+                                }
+                            }
+                            else if (command == "PRIVMSG")
+                            {
+                                string userText = receivedData.Remove(0, receivedData.IndexOf("#" + channelName) + channelName.Length + 3);
+                                DateTime theTime = DateTime.Now;
+                                Console.Write(theTime.ToString("[HH:mm:ss] "));
+                                if (userName == channelName)
+                                {
+                                    Console.ForegroundColor = streamerColor;
+                                }
+                                else
+                                {
+                                    Console.ForegroundColor = userColor;
+                                }
+                                if (theUser.IsModerator)
+                                {
+                                    Console.Write("(M)");
+                                }
+                                if (theUser.IsSubscriber)
+                                {
+                                    Console.Write("(S)");
+                                }
+                                Console.Write(theUser.DisplayName);
+                                Console.ForegroundColor = ConsoleColor.White;
+                                Console.WriteLine($": {userText}");
+                            }
+                            else
+                            {
+                                Console.WriteLine($"Unknown command -->{receivedData}");
+                            }
                         }
                     }
                 }
@@ -197,6 +226,63 @@ namespace ReeTwitch
             Console.SetCursorPosition(0, Console.CursorTop - 1);
             Console.Write(new string(' ', Console.WindowWidth));
             Console.SetCursorPosition(0, Console.CursorTop - 1);
+        }
+    }
+
+    class TwitchUser
+    {
+        public bool BitsOwner = false;
+        public bool IsSubGifter = false;
+        public bool IsModerator = false;
+        public bool IsPremium = false;
+        public bool IsSubscriber = false;
+        public string DisplayName = "";
+        public TwitchUser(string tagData)
+        {
+            // @badges=subscriber/6,bits/100;color=#008000;display-name=AtriusOz;emotes=;id=b6e3cad2-1e55-4400-b890-d647128115d9;mod=0;room-id=58022605;subscriber=1;tmi-sent-ts=1536647927062;turbo=0;user-id=45875670;user-type= :atriusoz!atriusoz@atriusoz.tmi.twitch.tv PRIVMSG #backyardistv :no, couldnt interact wiuth anything
+            List<string> tagDataItems = tagData.Split(';').ToList();
+            Dictionary<string, string> tagDataDictionary = new Dictionary<string, string>();
+            foreach (string item in tagDataItems)
+            {
+                tagDataDictionary.Add(item.Split('=')[0], item.Split('=')[1]);
+            }
+            DisplayName = tagDataDictionary["display-name"].ToString();
+            if (tagDataDictionary["@badges"] != "")
+            {
+                foreach (string badge in tagDataDictionary["@badges"].Split(','))
+                {
+                    if (badge.Contains("bits"))
+                    {
+                        BitsOwner = true;
+                    }
+                    else if (badge.Contains("moderator"))
+                    {
+                        IsModerator = true;
+                    }
+                    else if (badge.Contains("premium"))
+                    {
+                        IsPremium = true;
+                    }
+                    else if (badge.Contains("sub-gifter"))
+                    {
+                        IsSubGifter = true;
+                    }
+                    else if (badge.Contains("subscriber"))
+                    {
+                        IsSubscriber = true;
+                    }
+                    else
+                    {
+                        // Unknown Badge
+                        Console.WriteLine("Unknown Badge: " + badge);
+                    }
+                }
+            }
+
+            if (tagDataDictionary["emotes"] != "")
+            {
+                
+            }
         }
     }
 }
