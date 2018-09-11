@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
@@ -105,6 +105,19 @@ namespace ReeTwitch
                             theWriter.Flush();
                         }
                     }
+                    else if (dataParts[0] == "PING")
+                    {
+                        try
+                        {
+                            theWriter.WriteLine(receivedData.Replace("PING", "PONG"));
+                            theWriter.Flush();
+                            Console.WriteLine("Ping? Pong!");
+                        }
+                        catch (Exception e)
+                        {
+                            Console.WriteLine($"Fatal Error on PING: {e.Message}");
+                        }
+                    }
                     else
                     {
                         // User stuff
@@ -125,19 +138,6 @@ namespace ReeTwitch
                             else
                             {
                                 Console.WriteLine($"{userName} joined the channel");
-                            }
-                        }
-                        else if (command == "PING")
-                        {
-                            try
-                            {
-                                theWriter.WriteLine(dataParts[0].Replace("PING", "PONG"));
-                                theWriter.Flush();
-                                Console.WriteLine("Ping? Pong!");
-                            }
-                            catch (Exception e)
-                            {
-                                Console.WriteLine($"Fatal Error on PING: {e.Message}");
                             }
                         }
                         else if (command == "PRIVMSG")
